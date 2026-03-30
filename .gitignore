@@ -39,6 +39,7 @@ scan-target/
 # IDE
 .vscode/
 .idea/
+.kiro/
 *.swp
 
 # OS
