@@ -1,0 +1,100 @@
+# Authentication Failures — A07:2025
+
+rules:
+  - id: AUTH-001
+    title: "Weak password policy — very short minimum length"
+    owasp: A07
+    cwe: CWE-521
+    severity: MEDIUM
+    cvss: 6.5
+    languages: [python, javascript, java, php]
+    patterns:
+      python:
+        - "min_length\\s*=\\s*[1-5]\\b"
+        - "MIN_PASSWORD_LENGTH\\s*=\\s*[1-5]\\b"
+        - "password.*len\\s*<\\s*[1-5]\\b"
+      javascript:
+        - "minLength\\s*:\\s*[1-5]\\b"
+        - "password\\.length\\s*<\\s*[1-5]\\b"
+      java:
+        - "password\\.length\\s*\\(\\s*\\)\\s*<\\s*[1-5]\\b"
+      php:
+        - "strlen\\s*\\(\\s*\\$password\\s*\\)\\s*<\\s*[1-5]\\b"
+    description: >
+      The application enforces a very short minimum password length (< 6),
+      making accounts vulnerable to brute-force attacks.
+    remediation:
+      summary: "Enforce minimum 12-character passwords with complexity requirements."
+      steps:
+        - "Set minimum password length to 12+ characters."
+        - "Implement account lockout or exponential backoff after failed attempts."
+        - "Add CAPTCHA or rate limiting on login endpoints."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html"
+
+  - id: AUTH-002
+    title: "JWT with 'none' algorithm or weak secret"
+    owasp: A07
+    cwe: CWE-347
+    severity: CRITICAL
+    cvss: 9.1
+    languages: [python, javascript, java]
+    patterns:
+      python:
+        - "jwt\\.decode\\s*\\(.*verify_signature.*False"
+        - "jwt\\.decode\\s*\\(.*algorithms.*none"
+        - "jwt\\.encode\\s*\\(.*\"secret\""
+        - "jwt\\.encode\\s*\\(.*\"password\""
+      javascript:
+        - "jwt\\.sign\\s*\\(.*\"secret\""
+        - "jwt\\.verify\\s*\\(.*algorithms.*none"
+      java:
+        - "Jwts\\.parser\\s*\\(\\s*\\)\\.setSigningKey\\s*\\(\\s*\""
+    description: >
+      JWT tokens are signed with a weak/hardcoded secret or the 'none' algorithm
+      is accepted, allowing attackers to forge arbitrary tokens.
+    remediation:
+      summary: "Use RS256/ES256 with strong keys; never accept 'none' algorithm."
+      steps:
+        - "Use asymmetric algorithms (RS256, ES256) for JWTs."
+        - "Explicitly specify allowed algorithms in jwt.decode()."
+        - "Store signing keys in a secrets manager, not in source code."
+      code_fix: |
+        # BEFORE (vulnerable)
+        jwt.decode(token, options={"verify_signature": False})
+
+        # AFTER
+        jwt.decode(token, public_key, algorithms=["RS256"])
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html"
+
+  - id: AUTH-003
+    title: "Insecure session cookie configuration"
+    owasp: A07
+    cwe: CWE-384
+    severity: HIGH
+    cvss: 7.4
+    languages: [python, php, javascript]
+    patterns:
+      python:
+        - "SESSION_COOKIE_SECURE\\s*=\\s*False"
+        - "SESSION_COOKIE_HTTPONLY\\s*=\\s*False"
+        - "SESSION_COOKIE_SAMESITE\\s*=\\s*None"
+      php:
+        - "session\\.cookie_secure\\s*=\\s*0"
+        - "session\\.cookie_httponly\\s*=\\s*0"
+      javascript:
+        - "httpOnly\\s*:\\s*false"
+        - "secure\\s*:\\s*false"
+    description: >
+      Session cookies are configured insecurely (missing Secure, HttpOnly, or
+      SameSite flags), making them vulnerable to theft via XSS or network
+      interception.
+    remediation:
+      summary: "Set Secure, HttpOnly, and SameSite=Strict on all session cookies."
+      steps:
+        - "Set SESSION_COOKIE_SECURE=True, SESSION_COOKIE_HTTPONLY=True."
+        - "Set SESSION_COOKIE_SAMESITE='Strict' or 'Lax'."
+        - "Regenerate session ID after login to prevent fixation."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html"

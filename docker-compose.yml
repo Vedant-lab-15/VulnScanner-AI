@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  # ── Main scanner service ───────────────────────────────────────────────────
+  vulnscanner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: vulnscanner-ai:latest
+    container_name: vulnscanner
+    volumes:
+      - ./scan-target:/scan-target:ro   # mount code to scan (read-only)
+      - ./reports:/reports              # output reports here
+      - ./models:/app/models            # persist trained models
+    environment:
+      - VULNSCANNER_LOG_LEVEL=INFO
+    command: scan /scan-target --output /reports/report --sarif --json
+    networks:
+      - scanner-net
+
+  # ── Training service ──────────────────────────────────────────────────────
+  trainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: vulnscanner-ai:latest
+    container_name: vulnscanner-trainer
+    volumes:
+      - ./datasets:/app/datasets
+      - ./models:/app/models
+    command: train
+    profiles:
+      - training
+    networks:
+      - scanner-net
+
+  # ── Vulnerable test app (for URL scanning demos) ──────────────────────────
+  dvwa:
+    image: vulnerables/web-dvwa:latest
+    container_name: dvwa-target
+    ports:
+      - "8080:80"
+    environment:
+      - MYSQL_PASS=p@ssw0rd
+    profiles:
+      - demo
+    networks:
+      - scanner-net
+
+networks:
+  scanner-net:
+    driver: bridge

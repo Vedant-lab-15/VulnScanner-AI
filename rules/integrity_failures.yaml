@@ -1,0 +1,175 @@
+# Software and Data Integrity Failures — A08:2025
+# Covers insecure deserialization, unsigned code/data, CI/CD integrity gaps.
+
+rules:
+  - id: A08-001
+    title: "Insecure deserialization — pickle / marshal on untrusted data"
+    owasp: A08
+    cwe: CWE-502
+    severity: CRITICAL
+    cvss: 9.8
+    languages: [python]
+    patterns:
+      python:
+        - "pickle\\.loads\\s*\\(\\s*request\\."
+        - "pickle\\.loads\\s*\\(\\s*.*decode\\s*\\("
+        - "pickle\\.load\\s*\\(\\s*.*open\\s*\\(.*request\\."
+        - "marshal\\.loads\\s*\\(\\s*request\\."
+        - "shelve\\.open\\s*\\(\\s*.*request\\."
+        - "jsonpickle\\.decode\\s*\\(\\s*request\\."
+        - "yaml\\.load\\s*\\(\\s*[^,)]+\\s*\\)(?!.*Loader)"
+        - "yaml\\.load\\s*\\(.*Loader\\s*=\\s*yaml\\.Loader\\s*\\)"
+        - "yaml\\.load\\s*\\(.*Loader\\s*=\\s*yaml\\.UnsafeLoader\\s*\\)"
+    description: >
+      Untrusted data is deserialised using pickle, marshal, or unsafe YAML,
+      allowing an attacker to execute arbitrary Python code by crafting a
+      malicious serialised payload. This is a critical RCE vector.
+    remediation:
+      summary: "Never deserialise untrusted data with pickle/marshal. Use JSON or safe YAML."
+      steps:
+        - "Replace pickle with JSON, MessagePack, or Protocol Buffers for data exchange."
+        - "If pickle is required internally, sign payloads with HMAC before deserialising."
+        - "Use yaml.safe_load() instead of yaml.load() for all YAML parsing."
+        - "Validate and sanitise all data before deserialisation."
+      code_fix: |
+        # BEFORE (critical RCE)
+        import pickle
+        data = pickle.loads(request.data)
+
+        # AFTER (safe)
+        import json
+        data = json.loads(request.data)
+
+        # For YAML
+        # BEFORE
+        yaml.load(user_input)
+        # AFTER
+        yaml.safe_load(user_input)
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+        - "https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/"
+
+  - id: A08-002
+    title: "Insecure Java deserialization (ObjectInputStream)"
+    owasp: A08
+    cwe: CWE-502
+    severity: CRITICAL
+    cvss: 9.8
+    languages: [java]
+    patterns:
+      java:
+        - "ObjectInputStream\\s*\\(\\s*.*getInputStream"
+        - "new\\s+ObjectInputStream\\s*\\("
+        - "readObject\\s*\\(\\s*\\)"
+        - "XMLDecoder\\s*\\(\\s*.*getInputStream"
+        - "XStream\\s*\\(\\s*\\)\\.fromXML\\s*\\("
+    description: >
+      Java's ObjectInputStream.readObject() deserialises untrusted data,
+      enabling remote code execution via gadget chains (Apache Commons,
+      Spring, etc.). This is one of the most exploited Java vulnerabilities.
+    remediation:
+      summary: "Use a serialisation filter or replace with JSON/Protobuf."
+      steps:
+        - "Implement a Java serialisation filter (ObjectInputFilter, JEP 290)."
+        - "Replace Java serialisation with Jackson JSON or Protocol Buffers."
+        - "Use SerialKiller or NotSoSerial agent to block dangerous classes."
+        - "Never deserialise data from untrusted network sources."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+
+  - id: A08-003
+    title: "Unsafe eval / dynamic code execution on untrusted input"
+    owasp: A08
+    cwe: CWE-95
+    severity: CRITICAL
+    cvss: 9.8
+    languages: [python, javascript, php, java]
+    patterns:
+      python:
+        - "eval\\s*\\(\\s*request\\."
+        - "eval\\s*\\(\\s*.*input\\s*\\("
+        - "exec\\s*\\(\\s*request\\."
+        - "compile\\s*\\(\\s*request\\."
+        - "__import__\\s*\\(\\s*request\\."
+      javascript:
+        - "eval\\s*\\(\\s*req\\.(body|query|params)\\."
+        - "new\\s+Function\\s*\\(\\s*req\\.(body|query|params)\\."
+        - "setTimeout\\s*\\(\\s*req\\.(body|query|params)\\."
+        - "setInterval\\s*\\(\\s*req\\.(body|query|params)\\."
+      php:
+        - "eval\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+        - "preg_replace\\s*\\(.*\\/e.*\\$_(GET|POST|REQUEST)"
+        - "assert\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+      java:
+        - "ScriptEngine.*eval\\s*\\(\\s*.*request\\.getParameter"
+        - "GroovyShell.*evaluate\\s*\\(\\s*.*request"
+    description: >
+      User-controlled input is passed to eval(), exec(), or a dynamic code
+      execution function, allowing arbitrary code execution on the server.
+    remediation:
+      summary: "Never pass user input to eval/exec. Use safe alternatives."
+      steps:
+        - "Remove all eval() calls that process user input."
+        - "Use ast.literal_eval() for safe Python expression evaluation."
+        - "Use a sandboxed expression evaluator (e.g., simpleeval) if needed."
+        - "Validate input against a strict allowlist before any dynamic execution."
+      references:
+        - "https://owasp.org/www-community/attacks/Code_Injection"
+
+  - id: A08-004
+    title: "Unsigned / unverified software update or plugin loading"
+    owasp: A08
+    cwe: CWE-494
+    severity: HIGH
+    cvss: 8.1
+    languages: [python, javascript, java]
+    patterns:
+      python:
+        - "urllib\\.request\\.urlretrieve\\s*\\(.*http"
+        - "requests\\.get\\s*\\(.*\\.py.*\\)\\.content"
+        - "importlib\\.import_module\\s*\\(\\s*.*request\\."
+        - "__import__\\s*\\(\\s*.*request\\."
+      javascript:
+        - "require\\s*\\(\\s*.*req\\.(body|query|params)\\."
+        - "import\\s*\\(\\s*.*req\\.(body|query|params)\\."
+        - "eval\\s*\\(.*fetch\\s*\\("
+      java:
+        - "URLClassLoader\\s*\\(\\s*new\\s+URL"
+        - "Class\\.forName\\s*\\(\\s*.*request\\.getParameter"
+    description: >
+      The application dynamically loads code or plugins from a URL or
+      user-supplied path without verifying integrity (checksum/signature),
+      enabling supply-chain attacks or remote code injection.
+    remediation:
+      summary: "Verify integrity of all dynamically loaded code with checksums or signatures."
+      steps:
+        - "Pin dependency versions and verify checksums (pip hash checking, npm lockfiles)."
+        - "Never load code from user-supplied URLs or paths."
+        - "Use Subresource Integrity (SRI) for CDN-loaded scripts."
+        - "Implement code signing for plugin/extension systems."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Third_Party_Javascript_Management_Cheat_Sheet.html"
+
+  - id: A08-005
+    title: "Insecure PHP deserialization"
+    owasp: A08
+    cwe: CWE-502
+    severity: CRITICAL
+    cvss: 9.8
+    languages: [php]
+    patterns:
+      php:
+        - "unserialize\\s*\\(\\s*\\$_(GET|POST|REQUEST|COOKIE)"
+        - "unserialize\\s*\\(\\s*base64_decode\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+    description: >
+      PHP's unserialize() is called on user-controlled data, enabling
+      PHP Object Injection attacks that can lead to RCE, file deletion,
+      or authentication bypass via magic method abuse (__wakeup, __destruct).
+    remediation:
+      summary: "Never call unserialize() on user input. Use JSON instead."
+      steps:
+        - "Replace unserialize() with json_decode() for data exchange."
+        - "If serialisation is required, use a HMAC to sign the payload."
+        - "Implement __wakeup() and __destruct() defensively in all classes."
+      references:
+        - "https://owasp.org/www-community/vulnerabilities/PHP_Object_Injection"

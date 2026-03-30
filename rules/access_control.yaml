@@ -1,0 +1,113 @@
+# Broken Access Control — A01:2025
+
+rules:
+  - id: AC-001
+    title: "Missing authentication decorator / middleware"
+    owasp: A01
+    cwe: CWE-306
+    severity: HIGH
+    cvss: 8.1
+    languages: [python]
+    patterns:
+      python:
+        - "@app\\.route\\s*\\([^)]*\\)\\s*\\ndef\\s+\\w+\\s*\\([^)]*\\)\\s*:\\s*\\n(?!\\s*@login_required)"
+    description: >
+      A route or endpoint appears to lack authentication protection, potentially
+      allowing unauthenticated users to access restricted functionality.
+    remediation:
+      summary: "Apply authentication middleware to all protected routes."
+      steps:
+        - "Add @login_required or equivalent decorator to every protected view."
+        - "Use a global middleware that enforces authentication by default."
+        - "Adopt an allowlist approach: explicitly mark public routes."
+      code_fix: |
+        # BEFORE
+        @app.route("/admin/users")
+        def list_users():
+            ...
+
+        # AFTER
+        @app.route("/admin/users")
+        @login_required
+        def list_users():
+            ...
+      references:
+        - "https://owasp.org/Top10/A01_2021-Broken_Access_Control/"
+
+  - id: AC-002
+    title: "Insecure Direct Object Reference (IDOR)"
+    owasp: A01
+    cwe: CWE-639
+    severity: HIGH
+    cvss: 7.5
+    languages: [python, php, javascript, java]
+    patterns:
+      python:
+        - "objects\\.get\\s*\\(\\s*(pk|id)\\s*=\\s*request\\."
+        - "get_object_or_404\\s*\\(\\w+,\\s*(pk|id)\\s*=\\s*request\\."
+      php:
+        - "WHERE\\s+id\\s*=\\s*\\$_(GET|POST|REQUEST)"
+      javascript:
+        - "findById\\s*\\(\\s*req\\.(params|query|body)\\."
+      java:
+        - "findById\\s*\\(\\s*Long\\.parseLong\\s*\\(\\s*request\\.getParameter"
+    description: >
+      The application uses a user-supplied identifier to directly access an
+      object without verifying the requesting user owns or is authorised to
+      access that object.
+    remediation:
+      summary: "Always verify object ownership before returning data."
+      steps:
+        - "After fetching the object, check obj.owner == current_user."
+        - "Use indirect references (UUIDs mapped server-side) instead of sequential IDs."
+        - "Implement row-level security at the database layer."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html"
+
+  - id: AC-003
+    title: "Path traversal vulnerability"
+    owasp: A01
+    cwe: CWE-22
+    severity: HIGH
+    cvss: 7.5
+    languages: [python, php, javascript, java]
+    patterns:
+      python:
+        - "open\\s*\\(\\s*.*request\\.(args|form|json)"
+        - "open\\s*\\(\\s*f[\"'].*request\\."
+        - "send_file\\s*\\(\\s*.*request\\."
+      php:
+        - "include\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+        - "require\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+        - "file_get_contents\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+        - "readfile\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+      javascript:
+        - "fs\\.readFile\\s*\\(\\s*.*req\\.(params|query|body)\\."
+        - "path\\.join\\s*\\(.*req\\.(params|query|body)\\."
+      java:
+        - "new\\s+File\\s*\\(\\s*.*request\\.getParameter"
+        - "FileInputStream\\s*\\(\\s*.*request\\.getParameter"
+    description: >
+      User-controlled input is used to construct a file path without
+      sanitisation, allowing attackers to read or write arbitrary files
+      on the server (e.g., ../../etc/passwd).
+    remediation:
+      summary: "Canonicalise paths and verify they stay within the allowed root."
+      steps:
+        - "Use Path.resolve() and verify the result starts with the allowed base directory."
+        - "Maintain a whitelist of allowed filenames."
+        - "Never pass raw user input to file system APIs."
+      code_fix: |
+        # BEFORE
+        filename = request.args["file"]
+        with open(f"/var/uploads/{filename}") as f: ...
+
+        # AFTER
+        import pathlib
+        base = pathlib.Path("/var/uploads").resolve()
+        target = (base / filename).resolve()
+        if not str(target).startswith(str(base)):
+            abort(400)
+        with open(target) as f: ...
+      references:
+        - "https://owasp.org/www-community/attacks/Path_Traversal"

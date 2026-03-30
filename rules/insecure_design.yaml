@@ -1,0 +1,175 @@
+# Insecure Design — A04:2025
+# Detects structural/architectural security weaknesses that cannot be fixed
+# by patching alone — they require redesign.
+
+rules:
+  - id: A04-001
+    title: "Mass assignment / over-posting vulnerability"
+    owasp: A04
+    cwe: CWE-915
+    severity: HIGH
+    cvss: 8.1
+    languages: [python, javascript, java, php]
+    patterns:
+      python:
+        - "\\*\\*request\\.form"
+        - "\\*\\*request\\.json"
+        - "\\*\\*request\\.data"
+        - "\\.update\\s*\\(\\s*request\\.json"
+        - "\\.update\\s*\\(\\s*request\\.form"
+        - "Model\\s*\\(\\s*\\*\\*request\\."
+        - "from_dict\\s*\\(\\s*request\\.json"
+      javascript:
+        - "Object\\.assign\\s*\\(\\s*\\w+,\\s*req\\.body\\s*\\)"
+        - "\\.set\\s*\\(\\s*req\\.body\\s*\\)"
+        - "spread.*req\\.body"
+        - "\\.\\.\\.(req|request)\\.(body|params|query)"
+      java:
+        - "@ModelAttribute\\s+\\w+\\s+\\w+"
+        - "BeanUtils\\.copyProperties\\s*\\(.*request"
+      php:
+        - "\\$model->fill\\s*\\(\\s*\\$_(GET|POST|REQUEST)\\s*\\)"
+        - "\\$model->update\\s*\\(\\s*\\$_(GET|POST|REQUEST)\\s*\\)"
+    description: >
+      User-supplied data is bound directly to a model or object without
+      field filtering. An attacker can set fields like 'is_admin', 'role',
+      or 'balance' that were never intended to be user-controlled.
+    remediation:
+      summary: "Use explicit field allowlists when binding user input to models."
+      steps:
+        - "Define an explicit allowlist of fields accepted from user input."
+        - "Use serializer/form classes with declared fields (DRF Serializer, WTForms)."
+        - "Never pass **request.json or req.body directly to model constructors."
+        - "Apply @JsonIgnoreProperties or equivalent to block extra fields."
+      code_fix: |
+        # BEFORE (vulnerable — mass assignment)
+        user.update(**request.json)
+
+        # AFTER (safe — explicit allowlist)
+        ALLOWED = {"name", "email", "bio"}
+        data = {k: v for k, v in request.json.items() if k in ALLOWED}
+        user.update(**data)
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html"
+
+  - id: A04-002
+    title: "Missing rate limiting on sensitive endpoint"
+    owasp: A04
+    cwe: CWE-770
+    severity: MEDIUM
+    cvss: 6.5
+    languages: [python, javascript]
+    patterns:
+      python:
+        - "@app\\.route\\s*\\([^)]*(?:login|register|reset|forgot|verify|otp)[^)]*\\)"
+        - "@router\\.(post|get)\\s*\\([^)]*(?:login|register|reset|forgot)[^)]*\\)"
+      javascript:
+        - "router\\.(post|get)\\s*\\([\"']/?(login|register|reset|forgot|verify)"
+        - "app\\.(post|get)\\s*\\([\"']/?(login|register|reset|forgot|verify)"
+    description: >
+      A sensitive endpoint (login, registration, password reset) is defined
+      without apparent rate limiting, making it vulnerable to brute-force,
+      credential stuffing, and enumeration attacks.
+    remediation:
+      summary: "Apply rate limiting to all authentication and sensitive endpoints."
+      steps:
+        - "Use Flask-Limiter, express-rate-limit, or a WAF rule."
+        - "Implement exponential backoff after repeated failures."
+        - "Add CAPTCHA after N failed attempts."
+        - "Return generic error messages to prevent user enumeration."
+      code_fix: |
+        # Flask example
+        from flask_limiter import Limiter
+        limiter = Limiter(app, key_func=get_remote_address)
+
+        @app.route("/login", methods=["POST"])
+        @limiter.limit("5 per minute")
+        def login(): ...
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Denial_of_Service_Cheat_Sheet.html"
+
+  - id: A04-003
+    title: "Unrestricted file upload"
+    owasp: A04
+    cwe: CWE-434
+    severity: HIGH
+    cvss: 8.8
+    languages: [python, php, javascript, java]
+    patterns:
+      python:
+        - "request\\.files\\[.*\\]\\.save\\s*\\("
+        - "file\\.save\\s*\\(\\s*os\\.path\\.join"
+        - "upload\\.save\\s*\\("
+      php:
+        - "move_uploaded_file\\s*\\(\\s*\\$_FILES"
+        - "\\$_FILES\\[.*\\]\\[.name.\\]"
+      javascript:
+        - "req\\.file\\.path"
+        - "multer\\(\\s*\\{\\s*dest"
+        - "formidable.*uploadDir"
+      java:
+        - "getInputStream\\s*\\(\\s*\\).*FileOutputStream"
+        - "MultipartFile.*transferTo"
+    description: >
+      Files are uploaded without validating type, extension, or content.
+      An attacker can upload a web shell or malicious executable that gets
+      stored and potentially executed on the server.
+    remediation:
+      summary: "Validate file type by content (magic bytes), not extension. Store outside webroot."
+      steps:
+        - "Validate MIME type using python-magic or equivalent (not just extension)."
+        - "Rename uploaded files to a random UUID — never use the original filename."
+        - "Store uploads outside the web root or in object storage (S3)."
+        - "Scan uploads with antivirus before making them accessible."
+        - "Set a strict file size limit."
+      code_fix: |
+        import magic, uuid, os
+        ALLOWED_MIME = {"image/jpeg", "image/png", "application/pdf"}
+
+        file = request.files["upload"]
+        mime = magic.from_buffer(file.read(2048), mime=True)
+        if mime not in ALLOWED_MIME:
+            abort(400, "File type not allowed")
+        file.seek(0)
+        safe_name = str(uuid.uuid4())
+        file.save(os.path.join(UPLOAD_DIR, safe_name))
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html"
+
+  - id: A04-004
+    title: "Insecure password reset mechanism"
+    owasp: A04
+    cwe: CWE-640
+    severity: HIGH
+    cvss: 7.5
+    languages: [python, javascript, php, java]
+    patterns:
+      python:
+        - "reset_token\\s*=\\s*str\\s*\\(\\s*random\\.randint"
+        - "token\\s*=\\s*str\\s*\\(\\s*int\\s*\\(\\s*time\\."
+        - "token\\s*=\\s*username\\s*\\+"
+        - "reset.*=.*md5\\s*\\("
+      javascript:
+        - "resetToken\\s*=\\s*Math\\.random\\s*\\(\\s*\\)"
+        - "token\\s*=\\s*Date\\.now\\s*\\(\\s*\\)"
+      php:
+        - "\\$token\\s*=\\s*md5\\s*\\(\\s*\\$email"
+        - "\\$token\\s*=\\s*rand\\s*\\("
+    description: >
+      The password reset token is generated using a weak or predictable source
+      (Math.random, time-based, MD5 of email), making it guessable by an attacker
+      who can then take over any account.
+    remediation:
+      summary: "Use cryptographically secure random tokens with short expiry."
+      steps:
+        - "Generate tokens with secrets.token_urlsafe(32) or crypto.randomBytes(32)."
+        - "Store a hashed version of the token, not the plaintext."
+        - "Expire tokens after 15–30 minutes and invalidate after single use."
+      code_fix: |
+        import secrets, hashlib
+        # Generate secure token
+        token = secrets.token_urlsafe(32)
+        # Store hash in DB, send plaintext to user
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html"

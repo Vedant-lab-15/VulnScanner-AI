@@ -1,0 +1,88 @@
+# Security Misconfiguration — A05:2025
+
+rules:
+  - id: MISCONF-001
+    title: "Debug mode enabled in production"
+    owasp: A05
+    cwe: CWE-94
+    severity: HIGH
+    cvss: 7.5
+    languages: [python, javascript, java, php]
+    patterns:
+      python:
+        - "DEBUG\\s*=\\s*True"
+        - "app\\.run\\s*\\(.*debug\\s*=\\s*True"
+        - "FLASK_DEBUG\\s*=\\s*1"
+      javascript:
+        - "NODE_ENV\\s*=\\s*\"development\""
+        - "debug\\s*:\\s*true"
+      java:
+        - "spring\\.profiles\\.active\\s*=\\s*dev"
+      php:
+        - "display_errors\\s*=\\s*On"
+        - "WP_DEBUG.*true"
+    description: >
+      Debug mode is enabled, which can expose stack traces, internal paths,
+      configuration details, and other sensitive information to attackers.
+    remediation:
+      summary: "Disable debug mode in all production environments."
+      steps:
+        - "Set DEBUG=False and use environment-specific config files."
+        - "Never commit production config with debug flags enabled."
+        - "Use structured logging instead of verbose error output."
+      references:
+        - "https://owasp.org/Top10/A05_2021-Security_Misconfiguration/"
+
+  - id: MISCONF-002
+    title: "Wildcard CORS configuration"
+    owasp: A05
+    cwe: CWE-16
+    severity: MEDIUM
+    cvss: 5.3
+    languages: [python, javascript, java]
+    patterns:
+      python:
+        - "CORS\\s*\\(\\s*app\\s*\\)"
+        - "Access-Control-Allow-Origin.*\\*"
+      javascript:
+        - "origin\\s*:\\s*\"\\*\""
+        - "origin\\s*:\\s*'\\*'"
+      java:
+        - "addHeader\\s*\\(\\s*\"Access-Control-Allow-Origin\"\\s*,\\s*\"\\*\""
+    description: >
+      CORS is configured with a wildcard origin, allowing any website to make
+      cross-origin requests to this API, potentially exposing sensitive data.
+    remediation:
+      summary: "Restrict CORS to known origins — never use wildcard in production."
+      steps:
+        - "Use Flask-Talisman, Django SecurityMiddleware, or Helmet.js."
+        - "Set Content-Security-Policy, X-Frame-Options: DENY, HSTS."
+        - "Restrict CORS to known origins — never use wildcard in production."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Headers_Cheat_Sheet.html"
+
+  - id: MISCONF-003
+    title: "Exposed admin interface"
+    owasp: A05
+    cwe: CWE-284
+    severity: MEDIUM
+    cvss: 6.5
+    languages: [python, javascript]
+    patterns:
+      python:
+        - "path\\s*\\(\\s*\"admin/"
+        - "url\\s*\\(\\s*r\"admin/"
+      javascript:
+        - "router\\.(get|post)\\s*\\(\\s*\"/admin"
+        - "app\\.(get|post)\\s*\\(\\s*\"/admin"
+    description: >
+      An admin interface is exposed without apparent IP allowlisting or
+      additional authentication, increasing the attack surface.
+    remediation:
+      summary: "Restrict admin routes to trusted IPs and require MFA."
+      steps:
+        - "Add IP allowlist middleware before admin routes."
+        - "Require multi-factor authentication for admin access."
+        - "Consider moving admin to a separate internal-only service."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Access_Control_Cheat_Sheet.html"

@@ -1,0 +1,157 @@
+# Injection detection rules — A03:2025
+
+rules:
+  - id: INJ-001
+    title: "SQL Injection via string concatenation"
+    owasp: A03
+    cwe: CWE-89
+    severity: CRITICAL
+    cvss: 9.1
+    languages: [python, java, php, javascript]
+    patterns:
+      python:
+        - "execute\\s*\\(\\s*f[\"']"
+        - "cursor\\.execute\\s*\\(\\s*\"[^\"]*\"\\s*\\+\\s*\\w"
+        - "raw\\s*\\(\\s*f[\"']"
+        - "\\.raw\\s*\\(\\s*[\"'].*%"
+        - "execute\\s*\\(\\s*\".*%[sd].*\".*%"
+      java:
+        - "executeQuery\\s*\\(\\s*\"[^\"]*\"\\s*\\+"
+        - "Statement\\s+\\w+\\s*=.*createStatement"
+      php:
+        - "mysql_query\\s*\\(\\s*\\$"
+        - "mysqli_query\\s*\\(.*\\$_(GET|POST|REQUEST|COOKIE)"
+        - "\\$pdo->query\\s*\\(\\s*\\$"
+      javascript:
+        - "db\\.query\\s*\\(\\s*`[^`]*\\$\\{"
+        - "connection\\.query\\s*\\(\\s*[\"'].*\\+\\s*\\w"
+    description: >
+      User-controlled input is concatenated directly into a SQL query string,
+      allowing an attacker to manipulate query logic, bypass authentication,
+      or exfiltrate data.
+    remediation:
+      summary: "Use parameterised queries / prepared statements."
+      steps:
+        - "Replace string concatenation with parameterised placeholders (?, %s, :param)."
+        - "Use an ORM (SQLAlchemy, Hibernate, Eloquent) where possible."
+        - "Validate and sanitise all user input before use."
+      code_fix: |
+        # BEFORE (vulnerable)
+        cursor.execute("SELECT * FROM users WHERE id = " + user_id)
+
+        # AFTER (safe)
+        cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+      references:
+        - "https://owasp.org/www-community/attacks/SQL_Injection"
+        - "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+
+  - id: INJ-002
+    title: "Cross-Site Scripting (XSS) — reflected/stored"
+    owasp: A03
+    cwe: CWE-79
+    severity: HIGH
+    cvss: 7.4
+    languages: [python, php, javascript, java]
+    patterns:
+      python:
+        - "render_template_string\\s*\\("
+        - "mark_safe\\s*\\(\\s*request\\."
+        - "HttpResponse\\s*\\(\\s*request\\."
+      php:
+        - "echo\\s+\\$_(GET|POST|REQUEST|COOKIE)"
+        - "print\\s+\\$_(GET|POST|REQUEST|COOKIE)"
+      javascript:
+        - "innerHTML\\s*=\\s*\\w"
+        - "document\\.write\\s*\\("
+        - "dangerouslySetInnerHTML"
+      java:
+        - "out\\.print\\s*\\(\\s*request\\.getParameter"
+        - "response\\.getWriter\\(\\)\\.print\\s*\\(\\s*request\\."
+    description: >
+      Unsanitised user input is reflected back into HTML output, enabling
+      attackers to inject malicious scripts that execute in victims' browsers.
+    remediation:
+      summary: "Escape all output; use Content Security Policy."
+      steps:
+        - "HTML-encode all user-supplied data before rendering."
+        - "Use template engines with auto-escaping (Jinja2, Thymeleaf)."
+        - "Implement a strict Content-Security-Policy header."
+        - "Avoid innerHTML; use textContent or safe DOM APIs."
+      code_fix: |
+        # BEFORE (vulnerable)
+        return f"<h1>Hello {request.args['name']}</h1>"
+
+        # AFTER (safe — Jinja2 auto-escapes)
+        return render_template("hello.html", name=request.args["name"])
+      references:
+        - "https://owasp.org/www-community/attacks/xss/"
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+
+  - id: INJ-003
+    title: "OS Command Injection"
+    owasp: A03
+    cwe: CWE-78
+    severity: CRITICAL
+    cvss: 9.8
+    languages: [python, php, javascript, java]
+    patterns:
+      python:
+        - "os\\.system\\s*\\(\\s*f[\"']"
+        - "os\\.system\\s*\\([^\"']*\\+"
+        - "subprocess\\.(call|run|Popen)\\s*\\(.*shell\\s*=\\s*True.*\\+"
+        - "subprocess\\.(call|run|Popen)\\s*\\(\\s*f[\"'].*shell\\s*=\\s*True"
+      php:
+        - "system\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+        - "exec\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+        - "shell_exec\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+        - "passthru\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+      javascript:
+        - "exec\\s*\\(\\s*`[^`]*\\$\\{"
+        - "execSync\\s*\\(\\s*`[^`]*\\$\\{"
+      java:
+        - "Runtime\\.getRuntime\\(\\)\\.exec\\s*\\(\\s*\\w"
+        - "ProcessBuilder\\s*\\(\\s*.*\\+\\s*\\w"
+    description: >
+      User-controlled data is passed to a shell command without sanitisation,
+      allowing arbitrary OS command execution on the server.
+    remediation:
+      summary: "Never pass user input to shell commands; use safe APIs."
+      steps:
+        - "Use subprocess with a list of arguments (no shell=True)."
+        - "Whitelist allowed commands/arguments."
+        - "Run processes with least-privilege accounts."
+      code_fix: |
+        # BEFORE (vulnerable)
+        os.system("ping " + user_input)
+
+        # AFTER (safe)
+        import subprocess, shlex
+        subprocess.run(["ping", "-c", "1", user_input], check=True)
+      references:
+        - "https://owasp.org/www-community/attacks/Command_Injection"
+
+  - id: INJ-004
+    title: "LDAP Injection"
+    owasp: A03
+    cwe: CWE-90
+    severity: HIGH
+    cvss: 7.5
+    languages: [python, java, php]
+    patterns:
+      python:
+        - "ldap.*search.*\\+\\s*\\w"
+        - "ldap.*filter.*%s.*%"
+      java:
+        - "ctx\\.search\\s*\\(.*\\+\\s*\\w"
+      php:
+        - "ldap_search\\s*\\(.*\\$_(GET|POST|REQUEST)"
+    description: >
+      User input is embedded in an LDAP query without escaping, potentially
+      allowing authentication bypass or data exfiltration from the directory.
+    remediation:
+      summary: "Escape special LDAP characters in all user-supplied values."
+      steps:
+        - "Use ldap3's escape_filter_chars() or equivalent."
+        - "Validate input against a strict allowlist."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/LDAP_Injection_Prevention_Cheat_Sheet.html"

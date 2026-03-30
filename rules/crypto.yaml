@@ -1,0 +1,148 @@
+# Cryptographic Failures — A02:2025
+
+rules:
+  - id: CRYPTO-001
+    title: "Weak hashing algorithm (MD5 / SHA-1)"
+    owasp: A02
+    cwe: CWE-327
+    severity: HIGH
+    cvss: 7.5
+    languages: [python, java, php, javascript]
+    patterns:
+      python:
+        - "hashlib\\.md5\\s*\\("
+        - "hashlib\\.sha1\\s*\\("
+      java:
+        - "MessageDigest\\.getInstance\\s*\\(\\s*\"MD5\""
+        - "MessageDigest\\.getInstance\\s*\\(\\s*\"SHA-1\""
+        - "MessageDigest\\.getInstance\\s*\\(\\s*\"SHA1\""
+      php:
+        - "md5\\s*\\("
+        - "sha1\\s*\\("
+        - "hash\\s*\\(\\s*\"md5\""
+        - "hash\\s*\\(\\s*\"sha1\""
+      javascript:
+        - "createHash\\s*\\(\\s*\"md5\""
+        - "createHash\\s*\\(\\s*\"sha1\""
+    description: >
+      MD5 and SHA-1 are cryptographically broken and must not be used for
+      security-sensitive operations such as password hashing or digital signatures.
+    remediation:
+      summary: "Use SHA-256 or stronger; use bcrypt/argon2 for passwords."
+      steps:
+        - "Replace MD5/SHA-1 with SHA-256 or SHA-3 for integrity checks."
+        - "For password storage, use bcrypt, scrypt, or Argon2id."
+        - "Never use a general-purpose hash for passwords."
+      code_fix: |
+        # BEFORE
+        import hashlib
+        digest = hashlib.md5(password.encode()).hexdigest()
+
+        # AFTER (password hashing)
+        import bcrypt
+        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html"
+
+  - id: CRYPTO-002
+    title: "Hardcoded secret / API key"
+    owasp: A02
+    cwe: CWE-798
+    severity: CRITICAL
+    cvss: 9.0
+    languages: [python, java, php, javascript, dotenv]
+    patterns:
+      python:
+        - "SECRET_KEY\\s*=\\s*\"[^\"]{8,}\""
+        - "API_KEY\\s*=\\s*\"[^\"]{8,}\""
+        - "PASSWORD\\s*=\\s*\"[^\"]{4,}\""
+        - "aws_secret_access_key\\s*=\\s*\"[^\"]{20,}\""
+        - "DB_PASSWORD\\s*=\\s*\"[^\"]{4,}\""
+      java:
+        - "String\\s+(password|secret|apiKey|token)\\s*=\\s*\"[^\"]{4,}\""
+        - "private\\s+static\\s+final\\s+String\\s+(KEY|SECRET|PASSWORD)\\s*=\\s*\""
+      php:
+        - "\\$password\\s*=\\s*\"[^\"]{4,}\""
+        - "\\$api_key\\s*=\\s*\"[^\"]{4,}\""
+      javascript:
+        - "const\\s+(apiKey|secret|password|token)\\s*=\\s*\"[^\"]{8,}\""
+        - "const\\s+(apiKey|secret|password|token)\\s*=\\s*'[^']{8,}'"
+    description: >
+      A secret, password, or API key is hardcoded in source code. If the
+      repository is ever exposed, attackers gain immediate access to the
+      protected resource.
+    remediation:
+      summary: "Store secrets in environment variables or a secrets manager."
+      steps:
+        - "Remove the hardcoded value immediately and rotate the credential."
+        - "Use environment variables loaded via python-dotenv or similar."
+        - "Consider HashiCorp Vault, AWS Secrets Manager, or GitHub Secrets."
+        - "Add pre-commit hooks (detect-secrets, gitleaks) to prevent recurrence."
+      code_fix: |
+        # BEFORE
+        API_KEY = "sk-abc123supersecret"
+
+        # AFTER
+        import os
+        API_KEY = os.environ["API_KEY"]  # set in .env (gitignored)
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html"
+
+  - id: CRYPTO-003
+    title: "Insecure TLS / SSL configuration"
+    owasp: A02
+    cwe: CWE-326
+    severity: HIGH
+    cvss: 7.4
+    languages: [python, java, javascript]
+    patterns:
+      python:
+        - "ssl\\.CERT_NONE"
+        - "verify\\s*=\\s*False"
+        - "check_hostname\\s*=\\s*False"
+        - "PROTOCOL_SSLv"
+      java:
+        - "TrustAllCerts"
+        - "setHostnameVerifier.*ALLOW_ALL"
+      javascript:
+        - "rejectUnauthorized\\s*:\\s*false"
+        - "NODE_TLS_REJECT_UNAUTHORIZED.*=.*0"
+    description: >
+      TLS certificate verification is disabled or an insecure protocol version
+      is configured, making connections vulnerable to man-in-the-middle attacks.
+    remediation:
+      summary: "Always verify TLS certificates; use TLS 1.2+ only."
+      steps:
+        - "Remove verify=False and ssl.CERT_NONE from all HTTP clients."
+        - "Enforce TLS 1.2 or 1.3 minimum."
+        - "Use certificate pinning for high-value connections."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/TLS_Cipher_String_Cheat_Sheet.html"
+
+  - id: CRYPTO-004
+    title: "Weak symmetric encryption (DES / RC4 / ECB mode)"
+    owasp: A02
+    cwe: CWE-327
+    severity: HIGH
+    cvss: 7.5
+    languages: [python, java, php]
+    patterns:
+      python:
+        - "AES\\.new\\s*\\(.*MODE_ECB"
+      java:
+        - "Cipher\\.getInstance\\s*\\(\\s*\"DES"
+        - "Cipher\\.getInstance\\s*\\(\\s*\"RC4"
+        - "Cipher\\.getInstance\\s*\\(\\s*\"AES/ECB"
+      php:
+        - "mcrypt_encrypt\\s*\\(\\s*MCRYPT_DES"
+    description: >
+      A weak or broken cipher (DES, RC4) or insecure block cipher mode (ECB)
+      is used, making encrypted data recoverable by an attacker.
+    remediation:
+      summary: "Use AES-256-GCM or ChaCha20-Poly1305."
+      steps:
+        - "Replace DES/RC4 with AES-256 in GCM or CBC+HMAC mode."
+        - "Never use ECB mode — it leaks patterns in plaintext."
+        - "Use a cryptography library (Python cryptography, Bouncy Castle)."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html"

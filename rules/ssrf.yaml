@@ -1,0 +1,49 @@
+# SSRF — A10:2025
+
+rules:
+  - id: SSRF-001
+    title: "Server-Side Request Forgery (SSRF)"
+    owasp: A10
+    cwe: CWE-918
+    severity: HIGH
+    cvss: 8.6
+    languages: [python, javascript, java, php]
+    patterns:
+      python:
+        - "requests\\.(get|post|put|delete)\\s*\\(\\s*.*request\\.(args|form|json)"
+        - "urllib\\.request\\.urlopen\\s*\\(\\s*.*request\\."
+        - "httpx\\.(get|post)\\s*\\(\\s*.*request\\."
+      javascript:
+        - "axios\\.(get|post)\\s*\\(\\s*req\\.(query|body|params)\\."
+        - "fetch\\s*\\(\\s*req\\.(query|body|params)\\."
+      java:
+        - "new\\s+URL\\s*\\(\\s*.*request\\.getParameter"
+        - "RestTemplate.*getForObject\\s*\\(\\s*.*request\\.getParameter"
+      php:
+        - "curl_setopt\\s*\\(.*CURLOPT_URL.*\\$_(GET|POST|REQUEST)"
+        - "file_get_contents\\s*\\(\\s*\\$_(GET|POST|REQUEST)"
+    description: >
+      User-controlled input is used as a URL in a server-side HTTP request
+      without validation, allowing attackers to make the server fetch internal
+      resources (cloud metadata, internal services, localhost).
+    remediation:
+      summary: "Validate and allowlist URLs before making server-side requests."
+      steps:
+        - "Maintain an allowlist of permitted domains/IP ranges."
+        - "Block requests to private IP ranges (10.x, 172.16.x, 192.168.x, 169.254.x)."
+        - "Use a dedicated egress proxy that enforces the allowlist."
+        - "Disable redirects or validate redirect targets."
+      code_fix: |
+        # BEFORE (vulnerable)
+        url = request.args["url"]
+        resp = requests.get(url)
+
+        # AFTER
+        from urllib.parse import urlparse
+        ALLOWED_HOSTS = {"api.example.com", "cdn.example.com"}
+        parsed = urlparse(url)
+        if parsed.hostname not in ALLOWED_HOSTS:
+            abort(400, "URL not allowed")
+        resp = requests.get(url, timeout=5)
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html"

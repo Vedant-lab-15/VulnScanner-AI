@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# ML artifacts (large files — use Git LFS or store separately)
+models/*.joblib
+models/training_metrics.json
+models/model_meta.json
+
+# Reports (generated output — not source files)
+reports/
+*.sarif.json
+*.pdf
+# Generated HTML reports only (not template files)
+vulnscanner_report*.html
+report*.html
+scan_*.html
+url_scan_*.html
+github_scan_*.html
+demo_report.html
+self_scan.html
+
+# Secrets
+.env
+*.pem
+*.key
+
+# Temp scan targets
+scan-target/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Datasets (can be large)
+datasets/*.csv
+datasets/bigvul_raw.csv
+
+# Plotly bundle (auto-downloaded at report generation time)
+templates/plotly.min.js

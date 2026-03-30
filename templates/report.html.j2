@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VulnScanner AI — Security Report</title>
+{{ plotly_script | safe }}
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --border: #30363d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #484f58;
+    --accent-blue: #58a6ff;
+    --accent-purple: #bc8cff;
+    --color-critical: #ff4757;
+    --color-high: #ff6b35;
+    --color-medium: #ffa502;
+    --color-low: #2ed573;
+    --color-info: #70a1ff;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── Layout ── */
+  .container { max-width: 1400px; margin: 0 auto; padding: 0 2rem; }
+
+  /* ── Header ── */
+  .header {
+    background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 2.5rem 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(ellipse at 20% 50%, rgba(88,166,255,0.05) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 50%, rgba(188,140,255,0.05) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .header-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+  .logo { display: flex; align-items: center; gap: 0.75rem; }
+  .logo-icon { font-size: 2.5rem; }
+  .logo-text h1 { font-size: 1.75rem; font-weight: 700; color: var(--accent-blue); letter-spacing: -0.5px; }
+  .logo-text p { color: var(--text-secondary); font-size: 0.85rem; }
+  .header-meta { text-align: right; color: var(--text-secondary); font-size: 0.8rem; line-height: 1.8; }
+  .header-meta strong { color: var(--text-primary); }
+  .scan-id { font-family: var(--font-mono); color: var(--accent-purple); font-size: 0.75rem; }
+
+  /* ── Navigation tabs ── */
+  .nav {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .nav-inner { display: flex; gap: 0; overflow-x: auto; }
+  .nav-tab {
+    padding: 0.9rem 1.5rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .nav-tab:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+  .nav-tab.active { color: var(--accent-blue); border-bottom-color: var(--accent-blue); }
+
+  /* ── Sections ── */
+  .section { padding: 2.5rem 0; display: none; }
+  .section.active { display: block; }
+  .section-title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--accent-blue);
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* ── Summary cards ── */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  .stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    text-align: center;
+    transition: transform 0.2s, border-color 0.2s;
+  }
+  .stat-card:hover { transform: translateY(-2px); border-color: var(--accent-blue); }
+  .stat-card .num { font-size: 2.5rem; font-weight: 700; line-height: 1; margin-bottom: 0.25rem; }
+  .stat-card .label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-card.critical .num { color: var(--color-critical); }
+  .stat-card.high .num { color: var(--color-high); }
+  .stat-card.medium .num { color: var(--color-medium); }
+  .stat-card.low .num { color: var(--color-low); }
+  .stat-card.info-card .num { color: var(--color-info); }
+  .stat-card.risk .num { color: var(--color-critical); font-size: 2rem; }
+  .stat-card.files .num { color: var(--accent-blue); }
+
+  /* ── Charts grid ── */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .chart-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem;
+    min-height: 280px;
+  }
+
+  /* ── OWASP coverage table ── */
+  .owasp-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+  }
+  .owasp-item {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .owasp-item .owasp-id {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--accent-purple);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .owasp-item .owasp-name { color: var(--text-secondary); font-size: 0.8rem; flex: 1; }
+  .owasp-badge {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.15rem 0.6rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent-blue);
+    white-space: nowrap;
+  }
+  .owasp-badge.has-findings { background: rgba(255,71,87,0.15); border-color: var(--color-critical); color: var(--color-critical); }
+
+  /* ── Findings ── */
+  .findings-filter {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+  }
+  .filter-btn {
+    padding: 0.35rem 0.9rem;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .filter-btn:hover, .filter-btn.active { border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(88,166,255,0.1); }
+  .filter-btn.critical.active { border-color: var(--color-critical); color: var(--color-critical); background: rgba(255,71,87,0.1); }
+  .filter-btn.high.active { border-color: var(--color-high); color: var(--color-high); background: rgba(255,107,53,0.1); }
+  .filter-btn.medium.active { border-color: var(--color-medium); color: var(--color-medium); background: rgba(255,165,2,0.1); }
+  .filter-btn.low.active { border-color: var(--color-low); color: var(--color-low); background: rgba(46,213,115,0.1); }
+
+  .finding-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .finding-card:hover { border-color: #444d56; }
+  .finding-card.severity-CRITICAL { border-left: 3px solid var(--color-critical); }
+  .finding-card.severity-HIGH { border-left: 3px solid var(--color-high); }
+  .finding-card.severity-MEDIUM { border-left: 3px solid var(--color-medium); }
+  .finding-card.severity-LOW { border-left: 3px solid var(--color-low); }
+  .finding-card.severity-INFO { border-left: 3px solid var(--color-info); }
+
+  .finding-header {
+    padding: 1rem 1.25rem;
+    cursor: pointer;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    user-select: none;
+  }
+  .finding-header:hover { background: var(--bg-tertiary); }
+  .finding-header-left { flex: 1; min-width: 0; }
+  .finding-title-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+  .finding-id { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); }
+  .finding-title { font-weight: 600; font-size: 0.95rem; color: var(--text-primary); }
+  .finding-meta { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.75rem; color: var(--text-secondary); }
+  .finding-meta span { display: flex; align-items: center; gap: 0.25rem; }
+  .finding-chevron { color: var(--text-muted); font-size: 0.8rem; transition: transform 0.2s; flex-shrink: 0; margin-top: 0.2rem; }
+  .finding-card.open .finding-chevron { transform: rotate(90deg); }
+
+  .finding-body { display: none; padding: 0 1.25rem 1.25rem; border-top: 1px solid var(--border); }
+  .finding-card.open .finding-body { display: block; }
+
+  .finding-section { margin-top: 1rem; }
+  .finding-section-title { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 0.5rem; }
+  .finding-description { color: var(--text-secondary); font-size: 0.85rem; line-height: 1.7; }
+
+  .code-block {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: #e6edf3;
+    position: relative;
+  }
+  .code-block .code-lang {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.75rem;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .remediation-steps { list-style: none; }
+  .remediation-steps li {
+    padding: 0.4rem 0;
+    padding-left: 1.5rem;
+    position: relative;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+  }
+  .remediation-steps li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--color-low);
+  }
+
+  .refs-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .ref-link {
+    font-size: 0.75rem;
+    color: var(--accent-blue);
+    text-decoration: none;
+    background: rgba(88,166,255,0.1);
+    border: 1px solid rgba(88,166,255,0.2);
+    border-radius: 4px;
+    padding: 0.2rem 0.5rem;
+  }
+  .ref-link:hover { background: rgba(88,166,255,0.2); }
+
+  /* ── Severity badges ── */
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .badge-CRITICAL { background: rgba(255,71,87,0.2); color: var(--color-critical); border: 1px solid rgba(255,71,87,0.4); }
+  .badge-HIGH { background: rgba(255,107,53,0.2); color: var(--color-high); border: 1px solid rgba(255,107,53,0.4); }
+  .badge-MEDIUM { background: rgba(255,165,2,0.2); color: var(--color-medium); border: 1px solid rgba(255,165,2,0.4); }
+  .badge-LOW { background: rgba(46,213,115,0.2); color: var(--color-low); border: 1px solid rgba(46,213,115,0.4); }
+  .badge-INFO { background: rgba(112,161,255,0.2); color: var(--color-info); border: 1px solid rgba(112,161,255,0.4); }
+
+  .method-badge {
+    display: inline-block;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .method-pattern { background: rgba(88,166,255,0.15); color: var(--accent-blue); }
+  .method-ml { background: rgba(188,140,255,0.15); color: var(--accent-purple); }
+  .method-simulation { background: rgba(255,107,53,0.15); color: var(--color-high); }
+  .method-sca { background: rgba(46,213,115,0.15); color: var(--color-low); }
+
+  /* ── ML confidence bar ── */
+  .confidence-bar-wrap { display: flex; align-items: center; gap: 0.75rem; }
+  .confidence-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .confidence-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+  .confidence-label { font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; font-family: var(--font-mono); }
+
+  /* ── SCA table ── */
+  .sca-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .sca-table th {
+    text-align: left;
+    padding: 0.6rem 1rem;
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sca-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+    vertical-align: top;
+  }
+  .sca-table tr:last-child td { border-bottom: none; }
+  .sca-table tr:hover td { background: var(--bg-tertiary); }
+  .pkg-name { font-family: var(--font-mono); color: var(--text-primary); font-weight: 600; }
+  .cve-id { font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent-purple); }
+  .fix-version { font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-low); }
+
+  /* ── Simulation result ── */
+  .sim-result {
+    background: rgba(255,107,53,0.08);
+    border: 1px solid rgba(255,107,53,0.25);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    font-size: 0.8rem;
+  }
+  .sim-confirmed { color: var(--color-high); font-weight: 600; }
+  .sim-payload { font-family: var(--font-mono); color: var(--text-secondary); }
+
+  /* ── Empty state ── */
+  .empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-muted);
+  }
+  .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; }
+  .empty-state p { font-size: 0.9rem; }
+
+  /* ── Footer ── */
+  .footer {
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    padding: 1.5rem 0;
+    margin-top: 3rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 2;
+  }
+  .footer a { color: var(--accent-blue); text-decoration: none; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg-primary); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #444d56; }
+
+  /* ── Responsive ── */
+  @media (max-width: 768px) {
+    .container { padding: 0 1rem; }
+    .header-inner { flex-direction: column; align-items: flex-start; }
+    .header-meta { text-align: left; }
+    .summary-grid { grid-template-columns: repeat(3, 1fr); }
+    .charts-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────────────── -->
+<header class="header">
+  <div class="container">
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-icon">🛡️</div>
+        <div class="logo-text">
+          <h1>VulnScanner AI</h1>
+          <p>ML-powered OWASP Top 10 Vulnerability Scanner</p>
+        </div>
+      </div>
+      <div class="header-meta">
+        <div><strong>Scan ID:</strong> <span class="scan-id">{{ result.metadata.scan_id }}</span></div>
+        <div><strong>Target:</strong> {{ result.metadata.target.value }}</div>
+        <div><strong>Generated:</strong> {{ generated_at }}</div>
+        <div><strong>Scanner:</strong> v{{ result.metadata.scanner_version }}</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ── Navigation ─────────────────────────────────────────────────────── -->
+<nav class="nav">
+  <div class="container">
+    <div class="nav-inner">
+      <div class="nav-tab active" onclick="showSection('overview', this)">📊 Overview</div>
+      <div class="nav-tab" onclick="showSection('findings', this)">🔍 Findings ({{ result.summary.total_findings }})</div>
+      {% if result.sca_findings %}
+      <div class="nav-tab" onclick="showSection('sca', this)">📦 Dependencies ({{ result.sca_findings|length }})</div>
+      {% endif %}
+      <div class="nav-tab" onclick="showSection('charts', this)">📈 Charts</div>
+      <div class="nav-tab" onclick="showSection('owasp', this)">🗂️ OWASP Coverage</div>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Overview ───────────────────────────────────────────────────────── -->
+<section id="section-overview" class="section active">
+  <div class="container">
+
+    <div class="summary-grid">
+      <div class="stat-card critical">
+        <div class="num">{{ result.summary.critical }}</div>
+        <div class="label">Critical</div>
+      </div>
+      <div class="stat-card high">
+        <div class="num">{{ result.summary.high }}</div>
+        <div class="label">High</div>
+      </div>
+      <div class="stat-card medium">
+        <div class="num">{{ result.summary.medium }}</div>
+        <div class="label">Medium</div>
+      </div>
+      <div class="stat-card low">
+        <div class="num">{{ result.summary.low }}</div>
+        <div class="label">Low</div>
+      </div>
+      <div class="stat-card info-card">
+        <div class="num">{{ result.summary.info }}</div>
+        <div class="label">Info</div>
+      </div>
+      <div class="stat-card risk">
+        <div class="num">{{ result.summary.overall_risk_score | int }}<span style="font-size:1rem;color:var(--text-muted)">/100</span></div>
+        <div class="label">Risk Score</div>
+      </div>
+      <div class="stat-card files">
+        <div class="num">{{ result.metadata.files_scanned }}</div>
+        <div class="label">Files Scanned</div>
+      </div>
+      <div class="stat-card files">
+        <div class="num">{{ result.metadata.lines_scanned }}</div>
+        <div class="label">Lines Scanned</div>
+      </div>
+    </div>
+
+    <!-- Inline charts for overview -->
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div id="chart-gauge" style="height:240px;"></div>
+      </div>
+      <div class="chart-card">
+        <div id="chart-severity-pie" style="height:240px;"></div>
+      </div>
+      <div class="chart-card">
+        <div id="chart-method-donut" style="height:240px;"></div>
+      </div>
+    </div>
+
+    <!-- Scan metadata -->
+    <div class="section-title">📋 Scan Metadata</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;">
+      {% for label, value in [
+        ('Target Type', result.metadata.target.kind),
+        ('Started', result.metadata.started_at),
+        ('Finished', result.metadata.finished_at),
+        ('Languages', result.metadata.languages_detected | join(', ')),
+        ('SCA Findings', result.sca_findings | length),
+        ('Total Findings', result.summary.total_findings),
+      ] %}
+      <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:0.75rem 1rem;">
+        <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:0.25rem;">{{ label }}</div>
+        <div style="color:var(--text-primary);font-size:0.85rem;font-family:var(--font-mono);">{{ value }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+</section>
+
+<!-- ── Findings ───────────────────────────────────────────────────────── -->
+<section id="section-findings" class="section">
+  <div class="container">
+    <div class="section-title">🔍 Vulnerability Findings</div>
+
+    <div class="findings-filter">
+      <button class="filter-btn active" onclick="filterFindings('ALL', this)">All ({{ result.findings | length }})</button>
+      {% if result.summary.critical > 0 %}
+      <button class="filter-btn critical" onclick="filterFindings('CRITICAL', this)">Critical ({{ result.summary.critical }})</button>
+      {% endif %}
+      {% if result.summary.high > 0 %}
+      <button class="filter-btn high" onclick="filterFindings('HIGH', this)">High ({{ result.summary.high }})</button>
+      {% endif %}
+      {% if result.summary.medium > 0 %}
+      <button class="filter-btn medium" onclick="filterFindings('MEDIUM', this)">Medium ({{ result.summary.medium }})</button>
+      {% endif %}
+      {% if result.summary.low > 0 %}
+      <button class="filter-btn low" onclick="filterFindings('LOW', this)">Low ({{ result.summary.low }})</button>
+      {% endif %}
+    </div>
+
+    {% if result.findings %}
+      {% for finding in result.findings | sort(attribute='cvss_score', reverse=True) %}
+      <div class="finding-card severity-{{ finding.severity.value }}" data-severity="{{ finding.severity.value }}">
+        <div class="finding-header" onclick="toggleFinding(this.parentElement)">
+          <div class="finding-header-left">
+            <div class="finding-title-row">
+              <span class="badge badge-{{ finding.severity.value }}">{{ finding.severity.value }}</span>
+              <span class="finding-id">{{ finding.id }}</span>
+              <span class="finding-title">{{ finding.title }}</span>
+            </div>
+            <div class="finding-meta">
+              <span>📁 {{ finding.owasp_category.value.split('–')[0].strip() }}</span>
+              {% if finding.cwe_id %}<span>🔖 {{ finding.cwe_id }}</span>{% endif %}
+              <span>⚡ CVSS {{ finding.cvss_score }}</span>
+              <span class="method-badge method-{{ finding.detection_method.value }}">{{ finding.detection_method.value }}</span>
+              {% if finding.ml_prediction %}
+              <span>🤖 ML {{ (finding.ml_prediction.confidence * 100) | int }}%</span>
+              {% endif %}
+              {% if finding.simulation and finding.simulation.confirmed %}
+              <span style="color:var(--color-high);">✓ Confirmed</span>
+              {% endif %}
+            </div>
+          </div>
+          <span class="finding-chevron">▶</span>
+        </div>
+
+        <div class="finding-body">
+
+          <!-- File location -->
+          {% if finding.snippet %}
+          <div class="finding-section">
+            <div class="finding-section-title">📍 Location</div>
+            <div style="font-family:var(--font-mono);font-size:0.8rem;color:var(--accent-blue);">
+              {{ finding.snippet.file }}
+              {% if finding.snippet.line_start > 0 %}
+              <span style="color:var(--text-muted);">:{{ finding.snippet.line_start }}–{{ finding.snippet.line_end }}</span>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- Description -->
+          <div class="finding-section">
+            <div class="finding-section-title">📝 Description</div>
+            <div class="finding-description">{{ finding.description }}</div>
+          </div>
+
+          <!-- Code snippet -->
+          {% if finding.snippet and finding.snippet.content %}
+          <div class="finding-section">
+            <div class="finding-section-title">💻 Code Snippet</div>
+            <div class="code-block">
+              <span class="code-lang">{{ finding.snippet.language }}</span>
+              <pre>{{ finding.snippet.content | e }}</pre>
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- ML prediction -->
+          {% if finding.ml_prediction %}
+          <div class="finding-section">
+            <div class="finding-section-title">🤖 ML Classification</div>
+            <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;padding:0.75rem 1rem;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+                <span style="font-size:0.8rem;color:var(--text-secondary);">Model: <span style="font-family:var(--font-mono);color:var(--accent-purple);">{{ finding.ml_prediction.model_version }}</span></span>
+                <span style="font-size:0.8rem;color:var(--text-secondary);">Confidence</span>
+              </div>
+              <div class="confidence-bar-wrap">
+                <div class="confidence-bar">
+                  {% set conf_pct = (finding.ml_prediction.confidence * 100) | int %}
+                  {% if conf_pct >= 70 %}
+                    {% set bar_color = 'var(--color-critical)' %}
+                  {% elif conf_pct >= 40 %}
+                    {% set bar_color = 'var(--color-medium)' %}
+                  {% else %}
+                    {% set bar_color = 'var(--color-low)' %}
+                  {% endif %}
+                  <div class="confidence-bar-fill" style="width:{{ conf_pct }}%;background:{{ bar_color }};"></div>
+                </div>
+                <span class="confidence-label">{{ conf_pct }}%</span>
+              </div>
+              {% if finding.ml_prediction.top_features %}
+              <div style="margin-top:0.75rem;">
+                <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.5px;">Top Contributing Features</div>
+                <div style="display:flex;flex-wrap:wrap;gap:0.4rem;">
+                  {% for feat_name, feat_val in finding.ml_prediction.top_features[:5] %}
+                  <span style="font-family:var(--font-mono);font-size:0.7rem;padding:0.15rem 0.5rem;background:rgba(188,140,255,0.1);border:1px solid rgba(188,140,255,0.2);border-radius:4px;color:var(--accent-purple);">
+                    {{ feat_name }}: {{ "%.3f" | format(feat_val) }}
+                  </span>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endif %}
+              {% if finding.false_positive_likelihood > 0.5 %}
+              <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--color-medium);">
+                ⚠ High false-positive likelihood ({{ (finding.false_positive_likelihood * 100) | int }}%) — manual review recommended
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- Simulation result -->
+          {% if finding.simulation %}
+          <div class="finding-section">
+            <div class="finding-section-title">🧪 Simulation Result</div>
+            <div class="sim-result">
+              <div style="margin-bottom:0.4rem;">
+                {% if finding.simulation.confirmed %}
+                <span class="sim-confirmed">✓ Confirmed by safe probe</span>
+                {% else %}
+                <span style="color:var(--color-medium);">⚠ Potential — not fully confirmed</span>
+                {% endif %}
+              </div>
+              <div style="margin-bottom:0.25rem;color:var(--text-secondary);font-size:0.8rem;">
+                Risk indicator: <span style="color:var(--color-high);">{{ finding.simulation.risk_indicator }}</span>
+              </div>
+              <div class="sim-payload">Payload: {{ finding.simulation.payload_used | e }}</div>
+              {% if finding.simulation.response_snippet %}
+              <div style="margin-top:0.5rem;">
+                <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.25rem;">Response snippet:</div>
+                <pre style="font-size:0.75rem;color:var(--text-secondary);white-space:pre-wrap;word-break:break-all;">{{ finding.simulation.response_snippet | e | truncate(300) }}</pre>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- Remediation -->
+          <div class="finding-section">
+            <div class="finding-section-title">🔧 Remediation</div>
+            <div style="background:rgba(46,213,115,0.05);border:1px solid rgba(46,213,115,0.15);border-radius:6px;padding:0.75rem 1rem;">
+              <div style="font-weight:600;color:var(--color-low);margin-bottom:0.6rem;font-size:0.85rem;">{{ finding.remediation.summary }}</div>
+              {% if finding.remediation.steps %}
+              <ul class="remediation-steps">
+                {% for step in finding.remediation.steps %}
+                <li>{{ step }}</li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+              {% if finding.remediation.code_fix %}
+              <div style="margin-top:0.75rem;">
+                <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.5px;">Code Fix Example</div>
+                <div class="code-block"><pre>{{ finding.remediation.code_fix | e }}</pre></div>
+              </div>
+              {% endif %}
+              {% if finding.remediation.references %}
+              <div style="margin-top:0.75rem;">
+                <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.4rem;text-transform:uppercase;letter-spacing:0.5px;">References</div>
+                <div class="refs-list">
+                  {% for ref in finding.remediation.references %}
+                  <a href="{{ ref }}" target="_blank" rel="noopener" class="ref-link">{{ ref | replace('https://','') | truncate(60) }}</a>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+
+        </div><!-- /finding-body -->
+      </div><!-- /finding-card -->
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">
+        <div class="icon">✅</div>
+        <p>No vulnerabilities detected in the scanned files.</p>
+      </div>
+    {% endif %}
+
+  </div>
+</section>
+
+<!-- ── SCA / Dependencies ──────────────────────────────────────────────── -->
+{% if result.sca_findings %}
+<section id="section-sca" class="section">
+  <div class="container">
+    <div class="section-title">📦 Vulnerable Dependencies (SCA)</div>
+    <div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+      <table class="sca-table">
+        <thead>
+          <tr>
+            <th>Package</th>
+            <th>Version</th>
+            <th>CVE</th>
+            <th>Severity</th>
+            <th>Description</th>
+            <th>Fix</th>
+            <th>File</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for sca in result.sca_findings %}
+          <tr>
+            <td><span class="pkg-name">{{ sca.package }}</span></td>
+            <td><span style="font-family:var(--font-mono);font-size:0.8rem;color:var(--color-critical);">{{ sca.version }}</span></td>
+            <td><span class="cve-id">{{ sca.cve }}</span></td>
+            <td><span class="badge badge-{{ sca.severity }}">{{ sca.severity }}</span></td>
+            <td>{{ sca.description }}</td>
+            <td><span class="fix-version">{{ sca.fixed_version }}</span></td>
+            <td style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ sca.file }}">{{ sca.file | replace('\\', '/') | truncate(40) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- ── Charts ─────────────────────────────────────────────────────────── -->
+<section id="section-charts" class="section">
+  <div class="container">
+    <div class="section-title">📈 Visual Analysis</div>
+    <div class="charts-grid">
+      <div class="chart-card"><div id="chart-owasp-bar" style="height:320px;"></div></div>
+      <div class="chart-card"><div id="chart-severity-pie-full" style="height:320px;"></div></div>
+      <div class="chart-card"><div id="chart-method-donut-full" style="height:320px;"></div></div>
+      <div class="chart-card"><div id="chart-gauge-full" style="height:320px;"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── OWASP Coverage ─────────────────────────────────────────────────── -->
+<section id="section-owasp" class="section">
+  <div class="container">
+    <div class="section-title">🗂️ OWASP Top 10 (2025) Coverage</div>
+    <div class="owasp-grid">
+      {% set all_owasp = [
+        ('A01', 'Broken Access Control'),
+        ('A02', 'Cryptographic Failures'),
+        ('A03', 'Injection'),
+        ('A04', 'Insecure Design'),
+        ('A05', 'Security Misconfiguration'),
+        ('A06', 'Vulnerable & Outdated Components'),
+        ('A07', 'Auth & Session Failures'),
+        ('A08', 'Software & Data Integrity Failures'),
+        ('A09', 'Security Logging & Monitoring Failures'),
+        ('A10', 'Server-Side Request Forgery'),
+      ] %}
+      {% for code, name in all_owasp %}
+        {% set count = 0 %}
+        {% for cat_key, cat_count in owasp_coverage.items() %}
+          {% if code in cat_key %}
+            {% set count = cat_count %}
+          {% endif %}
+        {% endfor %}
+        <div class="owasp-item">
+          <span class="owasp-id">{{ code }}:2025</span>
+          <span class="owasp-name">{{ name }}</span>
+          <span class="owasp-badge {% if count > 0 %}has-findings{% endif %}">
+            {{ count }} finding{{ 's' if count != 1 else '' }}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+
+    <!-- Per-category finding list -->
+    {% for cat_key, cat_findings in findings_by_severity.items() %}
+    {% endfor %}
+    <div style="margin-top:2rem;">
+      <div class="section-title" style="font-size:1rem;">Findings by OWASP Category</div>
+      {% set ns = namespace(grouped={}) %}
+      {% for f in result.findings %}
+        {% set cat = f.owasp_category.value %}
+        {# Jinja2 doesn't support dict mutation in loops natively, so we render inline #}
+      {% endfor %}
+      {% for cat_key in owasp_coverage.keys() %}
+      {% set cat_findings = result.findings | selectattr('owasp_category.value', 'equalto', cat_key) | list %}
+      {% if cat_findings %}
+      <div style="margin-bottom:1.5rem;">
+        <div style="font-size:0.85rem;font-weight:600;color:var(--accent-purple);margin-bottom:0.5rem;padding:0.4rem 0.75rem;background:rgba(188,140,255,0.08);border-left:3px solid var(--accent-purple);border-radius:0 4px 4px 0;">
+          {{ cat_key }}
+        </div>
+        {% for f in cat_findings %}
+        <div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);font-size:0.82rem;">
+          <span class="badge badge-{{ f.severity.value }}">{{ f.severity.value }}</span>
+          <span style="font-family:var(--font-mono);color:var(--text-muted);font-size:0.7rem;">{{ f.id }}</span>
+          <span style="color:var(--text-primary);">{{ f.title }}</span>
+          {% if f.snippet %}<span style="color:var(--text-muted);font-size:0.75rem;margin-left:auto;font-family:var(--font-mono);">{{ f.snippet.file | truncate(50) }}</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+
+  </div>
+</section>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="container">
+    <div>Generated by <strong>VulnScanner AI</strong> v{{ result.metadata.scanner_version }} &nbsp;|&nbsp; {{ generated_at }}</div>
+    <div>
+      <a href="https://owasp.org/Top10/" target="_blank" rel="noopener">OWASP Top 10</a> &nbsp;|&nbsp;
+      <a href="https://github.com/your-org/vulnscanner-ai" target="_blank" rel="noopener">GitHub</a> &nbsp;|&nbsp;
+      <span style="color:var(--color-medium);">⚠ Only scan systems you are authorised to test</span>
+    </div>
+  </div>
+</footer>
+
+<!-- ── Scripts ────────────────────────────────────────────────────────── -->
+<script>
+  // ── Tab navigation ──────────────────────────────────────────────────
+  function showSection(id, tab) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('section-' + id).classList.add('active');
+    tab.classList.add('active');
+    // Trigger Plotly resize for charts section
+    if (id === 'charts') { setTimeout(() => window.dispatchEvent(new Event('resize')), 50); }
+  }
+
+  // ── Finding accordion ───────────────────────────────────────────────
+  function toggleFinding(card) {
+    card.classList.toggle('open');
+  }
+
+  // ── Severity filter ─────────────────────────────────────────────────
+  function filterFindings(severity, btn) {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.finding-card').forEach(card => {
+      if (severity === 'ALL' || card.dataset.severity === severity) {
+        card.style.display = '';
+      } else {
+        card.style.display = 'none';
+      }
+    });
+  }
+
+  // ── Plotly charts ───────────────────────────────────────────────────
+  const chartsData = {
+    severity_pie:        {{ charts.severity_pie | safe }},
+    owasp_bar:           {{ charts.owasp_bar | safe }},
+    risk_gauge:          {{ charts.risk_gauge | safe }},
+    detection_method:    {{ charts.detection_method_donut | safe }},
+  };
+
+  const plotConfig = { responsive: true, displayModeBar: false };
+
+  // Overview charts (compact)
+  Plotly.newPlot('chart-gauge',        chartsData.risk_gauge.data,        chartsData.risk_gauge.layout,        plotConfig);
+  Plotly.newPlot('chart-severity-pie', chartsData.severity_pie.data,      chartsData.severity_pie.layout,      plotConfig);
+  Plotly.newPlot('chart-method-donut', chartsData.detection_method.data,  chartsData.detection_method.layout,  plotConfig);
+
+  // Full charts section
+  Plotly.newPlot('chart-owasp-bar',        chartsData.owasp_bar.data,        chartsData.owasp_bar.layout,        plotConfig);
+  Plotly.newPlot('chart-severity-pie-full', chartsData.severity_pie.data,    chartsData.severity_pie.layout,     plotConfig);
+  Plotly.newPlot('chart-method-donut-full', chartsData.detection_method.data, chartsData.detection_method.layout, plotConfig);
+  Plotly.newPlot('chart-gauge-full',        chartsData.risk_gauge.data,       chartsData.risk_gauge.layout,       plotConfig);
+</script>
+
+</body>
+</html>

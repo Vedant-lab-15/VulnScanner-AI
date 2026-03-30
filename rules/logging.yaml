@@ -1,0 +1,63 @@
+# Security Logging & Monitoring Failures — A09:2025
+
+rules:
+  - id: LOG-001
+    title: "Sensitive data logged in plaintext"
+    owasp: A09
+    cwe: CWE-532
+    severity: MEDIUM
+    cvss: 5.5
+    languages: [python, javascript, java, php]
+    patterns:
+      python:
+        - "logging\\.(info|debug|warning|error)\\s*\\(.*password"
+        - "logging\\.(info|debug|warning|error)\\s*\\(.*token"
+        - "logging\\.(info|debug|warning|error)\\s*\\(.*secret"
+        - "print\\s*\\(.*password"
+      javascript:
+        - "console\\.(log|info|debug)\\s*\\(.*password"
+        - "console\\.(log|info|debug)\\s*\\(.*token"
+        - "console\\.(log|info|debug)\\s*\\(.*secret"
+      java:
+        - "log(ger)?\\.(info|debug|warn|error)\\s*\\(.*password"
+        - "System\\.out\\.println\\s*\\(.*password"
+      php:
+        - "error_log\\s*\\(.*password"
+    description: >
+      Sensitive data (passwords, tokens, secrets) is written to log files in
+      plaintext, creating a secondary exposure vector if logs are accessed.
+    remediation:
+      summary: "Never log sensitive values; mask or redact them."
+      steps:
+        - "Audit all log statements for sensitive field names."
+        - "Use a log sanitiser that redacts known sensitive keys."
+        - "Log security events (login, logout, failures) but never credentials."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html"
+
+  - id: LOG-002
+    title: "Silent exception swallowing on authentication failure"
+    owasp: A09
+    cwe: CWE-778
+    severity: MEDIUM
+    cvss: 5.3
+    languages: [python, javascript, java]
+    patterns:
+      python:
+        - "except.*Exception.*:\\s*\\n\\s*pass"
+        - "except.*Error.*:\\s*\\n\\s*pass"
+      javascript:
+        - "catch\\s*\\(\\s*\\w+\\s*\\)\\s*\\{\\s*\\}"
+      java:
+        - "catch\\s*\\(\\s*Exception\\s+\\w+\\s*\\)\\s*\\{\\s*\\}"
+    description: >
+      Exceptions are silently swallowed without logging, making it impossible
+      to detect authentication failures, brute-force attacks, or errors.
+    remediation:
+      summary: "Log all authentication failures with timestamp, IP, and username."
+      steps:
+        - "Log failed login attempts at WARN level with contextual info."
+        - "Integrate with a SIEM or alerting system for anomaly detection."
+        - "Never log the attempted password — only the username and IP."
+      references:
+        - "https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html"
